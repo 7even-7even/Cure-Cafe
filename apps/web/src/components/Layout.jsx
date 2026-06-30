@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { Bell, CreditCard, LayoutDashboard, LogOut, Package, Pill, Salad, Truck, Users, Utensils, BarChart3, MessageSquare, UserCog } from 'lucide-react';
+import { Bell, ClipboardCheck, CreditCard, LayoutDashboard, LogOut, Package, Pill, Salad, ShoppingBag, Truck, Users, Utensils, BarChart3, MessageSquare, UserCog } from 'lucide-react';
 import { logout } from '../features/auth/authSlice';
 import { api, useNotificationsQuery } from '../services/api';
 import { ROLES, roleLabel } from '../utils/format';
@@ -12,6 +12,8 @@ const nav = [
   { to: '/patients', label: 'Patients', icon: Users, roles: [ROLES.ADMIN, ROLES.DOCTOR, ROLES.DIETICIAN, ROLES.KITCHEN_STAFF, ROLES.DELIVERY_STAFF, ROLES.PATIENT] },
   { to: '/diets', label: 'Diets', icon: Pill, roles: [ROLES.ADMIN, ROLES.DOCTOR, ROLES.DIETICIAN, ROLES.PATIENT] },
   { to: '/meals', label: 'Meals', icon: Utensils, roles: Object.values(ROLES) },
+  { to: '/menu', label: 'Menu', icon: ShoppingBag, roles: [ROLES.ADMIN, ROLES.KITCHEN_STAFF, ROLES.PATIENT] },
+  { to: '/orders', label: 'Orders', icon: ClipboardCheck, roles: [ROLES.ADMIN, ROLES.KITCHEN_STAFF, ROLES.DELIVERY_STAFF, ROLES.PATIENT, ROLES.DIETICIAN] },
   { to: '/kitchen', label: 'Kitchen', icon: Salad, roles: [ROLES.ADMIN, ROLES.DIETICIAN, ROLES.KITCHEN_STAFF] },
   { to: '/deliveries', label: 'Deliveries', icon: Truck, roles: [ROLES.ADMIN, ROLES.DELIVERY_STAFF, ROLES.KITCHEN_STAFF] },
   { to: '/inventory', label: 'Inventory', icon: Package, roles: [ROLES.ADMIN, ROLES.DIETICIAN, ROLES.KITCHEN_STAFF] },

@@ -1,6 +1,6 @@
 # Cure Cafe
 
-Cure Cafe is a production-ready MVP for hospital nutrition operations. It manages admitted patient diets, doctor prescriptions, dietician approvals, kitchen preparation, ward-wise meal distribution, delivery tracking, inventory, billing, notifications, analytics and patient feedback.
+Cure Cafe is a production-ready MVP for hospital nutrition operations. It manages admitted patient diets, doctor prescriptions, dietician approvals, kitchen preparation, patient menu ordering, ward-wise meal distribution, delivery tracking, inventory, billing, notifications, analytics and patient feedback.
 
 The project uses **PostgreSQL + Prisma** and now includes **email-verified registration**.
 
@@ -102,6 +102,7 @@ hfms/
           patients/
           diets/
           meals/
+          menu/
           inventory/
           billing/
           reports/
@@ -180,6 +181,10 @@ Core PostgreSQL-backed tables in `apps/api/prisma/schema.prisma`:
 - `MealSchedule`: breakfast/lunch/snacks/dinner serve schedule.
 - `MealOrder`: generated patient meal order with status workflow.
 - `MealStatusHistory`: audit trail for prepared/packed/dispatched/delivered transitions.
+- `MenuItem`: kitchen-posted food sets, individual items and customizable items with nutrition data.
+- `FoodOrder`: patient menu orders with kitchen/delivery workflow and billing link.
+- `FoodOrderItem`: ordered menu lines with quantity, price and nutrient snapshots.
+- `FoodOrderStatusHistory`: audit trail for patient menu order tracking.
 - `InventoryItem`: stock, unit, threshold, expiry and cost.
 - `InventoryTxn`: purchase/consumption/adjustment/wastage transaction ledger.
 - `BillingCharge`: meal and manual charges attached to patient bill.
@@ -243,6 +248,18 @@ Base URL: `http://localhost:4000/api`
 - `PATCH /meals/orders/:id/status`
 - `DELETE /meals/orders/:id`
 - `GET /meals/kitchen/dashboard`
+
+### Patient Menu and Food Orders
+
+- `GET /menu/types`
+- `GET /menu/items`
+- `POST /menu/items`
+- `PATCH /menu/items/:id`
+- `DELETE /menu/items/:id`
+- `POST /menu/orders`
+- `GET /menu/orders`
+- `GET /menu/orders/:id`
+- `PATCH /menu/orders/:id/status`
 
 ### Inventory
 
@@ -452,9 +469,9 @@ All seeded accounts are already email-verified for testing.
 - **Admin**: all modules, users, billing status and reports.
 - **Doctor**: patients and prescriptions.
 - **Dietician**: patients, diet approvals/customization, billing and reports.
-- **Kitchen Staff**: schedules, meal preparation/packing, inventory and kitchen reports.
-- **Delivery Staff**: dispatch and deliver packed meals.
-- **Patient**: own profile, own meals, own bills, feedback and notifications.
+- **Kitchen Staff**: schedules, meal preparation/packing, publish menu items, prepare menu orders, inventory and kitchen reports.
+- **Delivery Staff**: dispatch scheduled meals and deliver patient menu orders after payment confirmation.
+- **Patient**: own profile, own meals, menu ordering, own order tracking, own bills, feedback and notifications.
 
 ---
 

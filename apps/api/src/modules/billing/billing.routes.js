@@ -42,7 +42,7 @@ router.get('/charges', validate(listSchema), asyncHandler(async (req, res) => {
   const [items, total] = await Promise.all([
     prisma.billingCharge.findMany({
       where,
-      include: { patient: true, mealOrder: true },
+      include: { patient: true, mealOrder: true, foodOrder: true },
       orderBy: { chargeDate: 'desc' },
       skip: (page - 1) * limit,
       take: limit

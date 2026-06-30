@@ -60,6 +60,8 @@ hfms/
             inventory.routes.js
           meals/
             meals.routes.js
+          menu/
+            menu.routes.js
           notifications/
             notifications.routes.js
           patients/
@@ -88,6 +90,8 @@ hfms/
           BrandLogo.jsx
           DataState.jsx
           Layout.jsx
+          NutrientPie.jsx
+          OrderTracker.jsx
           ProtectedRoute.jsx
           StatCard.jsx
         features/
@@ -103,6 +107,8 @@ hfms/
           KitchenPage.jsx
           LoginPage.jsx
           MealsPage.jsx
+          MenuPage.jsx
+          OrdersPage.jsx
           NotificationsPage.jsx
           PatientsPage.jsx
           RegisterPage.jsx
@@ -235,6 +241,10 @@ Main models:
 - `MealSchedule`
 - `MealOrder`
 - `MealStatusHistory`
+- `MenuItem`
+- `FoodOrder`
+- `FoodOrderItem`
+- `FoodOrderStatusHistory`
 - `InventoryItem`
 - `InventoryTxn`
 - `BillingCharge`
@@ -568,6 +578,28 @@ Meal status workflow:
 SCHEDULED -> PREPARED -> PACKED -> DISPATCHED -> DELIVERED
 ```
 
+## `menu/menu.routes.js`
+
+Patient menu and made-to-order food ordering module.
+
+Supports:
+
+- kitchen/admin publishing menu items
+- item types such as normal sets, jumbo sets, individual items and customizable bowls
+- nutrient metadata for calories, carbs, proteins, fats, vitamins, fiber and sodium
+- patient food order placement
+- billing charge creation at order placement
+- kitchen order acceptance/preparation/ready workflow
+- delivery pickup/delivered workflow
+- payment confirmation on delivery
+- patient, kitchen and delivery notifications
+
+Food order workflow:
+
+```text
+PLACED -> ACCEPTED -> PREPARING -> READY_FOR_PICKUP -> OUT_FOR_DELIVERY -> DELIVERED
+```
+
 ## `inventory/inventory.routes.js`
 
 Inventory operations.
@@ -811,6 +843,18 @@ Includes:
 - logout button
 - unread notification badge
 
+## `NutrientPie.jsx`
+
+Reusable nutrient visualization component.
+
+Displays food item nutrition as a conic-gradient pie chart with nutrient percentages for carbs, protein, fats, vitamins and fiber.
+
+## `OrderTracker.jsx`
+
+Reusable order-progress tracker.
+
+Shows patient menu order progress from placed to delivered and handles cancelled state styling.
+
 ## `ProtectedRoute.jsx`
 
 Frontend route guard.
@@ -926,6 +970,22 @@ Supports:
 - generate meal orders
 - update meal order statuses according to role
 
+## `MenuPage.jsx`
+
+Patient menu page and kitchen menu publishing page.
+
+For patients, it shows available food sets, individual items and customizable options with nutrition pie charts and a cart. Placing an order creates a patient menu order and adds a billing charge.
+
+For kitchen staff/admin, it provides a form to publish new menu items with price, category, ingredients, restrictions, allergens, customization options and nutrient values.
+
+## `OrdersPage.jsx`
+
+Patient menu order tracking and operations page.
+
+For patients, it shows current and past menu orders with tracking.
+For kitchen staff, it supports accepting, preparing and marking orders ready for pickup.
+For delivery staff, it supports pickup/dispatch and marking delivered after payment confirmation.
+
 ## `KitchenPage.jsx`
 
 Kitchen dashboard page.
@@ -1027,6 +1087,10 @@ Includes hooks like:
 - `useVerifyEmailMutation`
 - `usePatientsQuery`
 - `useMealOrdersQuery`
+- `useMenuItemsQuery`
+- `useCreateFoodOrderMutation`
+- `useFoodOrdersQuery`
+- `useUpdateFoodOrderStatusMutation`
 - `useInventoryItemsQuery`
 - `useBillingChargesQuery`
 - `useNotificationsQuery`
@@ -1121,4 +1185,19 @@ Diet plan assigned
   -> delivery delivers
   -> billing charge is created
   -> patient can submit feedback
+```
+
+## Patient menu order flow
+
+```text
+Kitchen publishes menu item
+  -> patient views nutrient pie chart
+  -> patient adds items/customization to cart
+  -> patient places order
+  -> billing charge is created as pending
+  -> kitchen accepts/prepares/marks ready
+  -> delivery staff picks up
+  -> delivery staff confirms payment and delivery
+  -> billing charge becomes paid
+  -> patient receives notifications throughout
 ```

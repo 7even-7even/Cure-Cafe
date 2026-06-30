@@ -35,7 +35,6 @@ async function requireAuth(req, _res, next) {
     }
 
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET);
-    
     const user = await prisma.user.findUnique({ where: { id: payload.sub } });
 
     if (!user || !user.isActive) {

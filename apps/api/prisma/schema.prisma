@@ -57,6 +57,7 @@ model Patient {
   dietPlans         DietPlan[]         @relation("PatientDietPlans")
   prescriptions     DietPrescription[]
   mealOrders        MealOrder[]
+  foodOrders        FoodOrder[]
   billingCharges    BillingCharge[]
   feedbacks         Feedback[]
   fileAssets        FileAsset[]
@@ -173,6 +174,101 @@ model MealStatusHistory {
   @@index([mealOrderId])
 }
 
+model MenuItem {
+  id                  String          @id @default(cuid())
+  name                String
+  description         String?
+  itemType            String
+  category            String?
+  price               Float
+  calories            Float           @default(0)
+  carbsGrams          Float           @default(0)
+  proteinGrams        Float           @default(0)
+  fatGrams            Float           @default(0)
+  vitaminsGrams       Float           @default(0)
+  fiberGrams          Float           @default(0)
+  sodiumMg            Float           @default(0)
+  ingredients         String          @default("[]")
+  allergens           String          @default("[]")
+  restrictions        String          @default("[]")
+  customizableOptions String          @default("[]")
+  imageUrl            String?
+  isActive            Boolean         @default(true)
+  createdById         String?
+  orderItems          FoodOrderItem[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([itemType, isActive])
+  @@index([category])
+  @@index([isActive])
+}
+
+model FoodOrder {
+  id                  String                   @id @default(cuid())
+  orderNumber         String                   @unique
+  patientId           String
+  patient             Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  orderedById         String?
+  status              String                   @default("PLACED")
+  ward                String
+  roomNumber          String
+  bedNumber           String
+  totalAmount         Float                    @default(0)
+  specialInstructions String?
+  acceptedAt          DateTime?
+  preparingAt         DateTime?
+  readyAt             DateTime?
+  dispatchedAt        DateTime?
+  deliveredAt         DateTime?
+  deliveredById       String?
+  paymentReceivedAt   DateTime?
+  items               FoodOrderItem[]
+  statusHistory       FoodOrderStatusHistory[]
+  billingCharge       BillingCharge?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@index([patientId, createdAt])
+  @@index([status, createdAt])
+  @@index([ward, status])
+}
+
+model FoodOrderItem {
+  id                 String    @id @default(cuid())
+  foodOrderId        String
+  foodOrder          FoodOrder @relation(fields: [foodOrderId], references: [id], onDelete: Cascade)
+  menuItemId         String
+  menuItem           MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  nameSnapshot       String
+  itemTypeSnapshot   String
+  priceSnapshot      Float
+  quantity           Int
+  lineTotal          Float
+  calories           Float     @default(0)
+  carbsGrams         Float     @default(0)
+  proteinGrams       Float     @default(0)
+  fatGrams           Float     @default(0)
+  vitaminsGrams      Float     @default(0)
+  customizationNotes String?
+  createdAt          DateTime  @default(now())
+
+  @@index([foodOrderId])
+  @@index([menuItemId])
+}
+
+model FoodOrderStatusHistory {
+  id          String    @id @default(cuid())
+  foodOrderId String
+  foodOrder   FoodOrder @relation(fields: [foodOrderId], references: [id], onDelete: Cascade)
+  status      String
+  changedById String?
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@index([foodOrderId])
+}
+
 model InventoryItem {
   id                String         @id @default(cuid())
   name              String         @unique
@@ -213,6 +309,8 @@ model BillingCharge {
   patient     Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
   mealOrderId String?    @unique
   mealOrder   MealOrder? @relation(fields: [mealOrderId], references: [id], onDelete: SetNull)
+  foodOrderId String?    @unique
+  foodOrder   FoodOrder? @relation(fields: [foodOrderId], references: [id], onDelete: SetNull)
   description String
   amount      Float
   status      String     @default("PENDING")

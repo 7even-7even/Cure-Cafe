@@ -15,6 +15,10 @@ async function reset() {
   await prisma.fileAsset.deleteMany();
   await prisma.feedback.deleteMany();
   await prisma.billingCharge.deleteMany();
+  await prisma.foodOrderStatusHistory.deleteMany();
+  await prisma.foodOrderItem.deleteMany();
+  await prisma.foodOrder.deleteMany();
+  await prisma.menuItem.deleteMany();
   await prisma.mealStatusHistory.deleteMany();
   await prisma.mealOrder.deleteMany();
   await prisma.dietPrescription.deleteMany();
@@ -228,6 +232,69 @@ async function main() {
     const { key, ...itemData } = item;
     inventory[key] = await prisma.inventoryItem.create({ data: itemData });
   }
+
+  const menuItems = {};
+  for (const item of [
+    {
+      key: 'normalSet', name: 'Normal Recovery Set', itemType: 'NORMAL_SET', category: 'Sets', price: 140,
+      description: 'Balanced hospital meal with rice, dal, seasonal vegetables, curd and fruit.', calories: 620, carbsGrams: 82, proteinGrams: 24, fatGrams: 14, vitaminsGrams: 9, fiberGrams: 12, sodiumMg: 420,
+      ingredients: ['Rice', 'Dal', 'Vegetables', 'Curd', 'Fruit'], allergens: ['Milk'], restrictions: ['VEGETARIAN'], customizableOptions: ['Less oil', 'No curd', 'Extra dal']
+    },
+    {
+      key: 'jumboSet', name: 'Jumbo Protein Set', itemType: 'JUMBO_SET', category: 'Sets', price: 220,
+      description: 'High protein meal set with paneer or eggs, rice, dal, vegetables and fruit bowl.', calories: 860, carbsGrams: 94, proteinGrams: 46, fatGrams: 26, vitaminsGrams: 12, fiberGrams: 15, sodiumMg: 520,
+      ingredients: ['Rice', 'Paneer/Eggs', 'Dal', 'Vegetables', 'Fruits'], allergens: ['Milk', 'Egg'], restrictions: [], customizableOptions: ['Paneer option', 'Egg option', 'Extra protein']
+    },
+    {
+      key: 'riceBowl', name: 'Steamed Rice Bowl', itemType: 'INDIVIDUAL_ITEM', category: 'Individual Items', price: 55,
+      description: 'Soft steamed rice portion suitable for normal and low-spice diets.', calories: 240, carbsGrams: 52, proteinGrams: 4, fatGrams: 1, vitaminsGrams: 1, fiberGrams: 2, sodiumMg: 8,
+      ingredients: ['Rice'], allergens: [], restrictions: ['VEGETARIAN', 'JAIN'], customizableOptions: ['Small portion', 'Large portion']
+    },
+    {
+      key: 'fruitCup', name: 'Fresh Fruit Cup', itemType: 'INDIVIDUAL_ITEM', category: 'Individual Items', price: 75,
+      description: 'Seasonal fruit cup rich in vitamins and hydration.', calories: 160, carbsGrams: 34, proteinGrams: 2, fatGrams: 1, vitaminsGrams: 18, fiberGrams: 6, sodiumMg: 5,
+      ingredients: ['Seasonal fruits'], allergens: [], restrictions: ['VEGETARIAN', 'JAIN', 'GLUTEN_FREE'], customizableOptions: ['No banana', 'Diabetic portion']
+    },
+    {
+      key: 'customBowl', name: 'Build Your Own Recovery Bowl', itemType: 'CUSTOMIZABLE', category: 'Customizable', price: 180,
+      description: 'Custom bowl with selectable base, protein, vegetables and add-ons.', calories: 700, carbsGrams: 76, proteinGrams: 32, fatGrams: 18, vitaminsGrams: 14, fiberGrams: 13, sodiumMg: 390,
+      ingredients: ['Base', 'Protein', 'Vegetables', 'Add-ons'], allergens: [], restrictions: ['VEGETARIAN'], customizableOptions: ['Rice base', 'Millet base', 'Paneer protein', 'Egg protein', 'No spice', 'Jain preparation']
+    }
+  ]) {
+    const { key, ingredients, allergens, restrictions, customizableOptions, ...itemData } = item;
+    menuItems[key] = await prisma.menuItem.create({
+      data: {
+        ...itemData,
+        ingredients: jsonArray(ingredients),
+        allergens: jsonArray(allergens),
+        restrictions: jsonArray(restrictions),
+        customizableOptions: jsonArray(customizableOptions),
+        createdById: users.kitchen.id
+      }
+    });
+  }
+
+  const demoFoodOrder = await prisma.foodOrder.create({
+    data: {
+      orderNumber: `CC-${today.toISOString().slice(0, 10).replace(/-/g, '')}-DEMO01`,
+      patientId: patients.priya.id,
+      orderedById: users.patientUser.id,
+      status: 'PLACED',
+      ward: patients.priya.ward,
+      roomNumber: patients.priya.roomNumber,
+      bedNumber: patients.priya.bedNumber,
+      totalAmount: menuItems.fruitCup.price + menuItems.riceBowl.price,
+      specialInstructions: 'Please keep fruit chilled and rice warm.',
+      items: {
+        create: [
+          { menuItemId: menuItems.fruitCup.id, nameSnapshot: menuItems.fruitCup.name, itemTypeSnapshot: menuItems.fruitCup.itemType, priceSnapshot: menuItems.fruitCup.price, quantity: 1, lineTotal: menuItems.fruitCup.price, calories: menuItems.fruitCup.calories, carbsGrams: menuItems.fruitCup.carbsGrams, proteinGrams: menuItems.fruitCup.proteinGrams, fatGrams: menuItems.fruitCup.fatGrams, vitaminsGrams: menuItems.fruitCup.vitaminsGrams, customizationNotes: 'Diabetic portion' },
+          { menuItemId: menuItems.riceBowl.id, nameSnapshot: menuItems.riceBowl.name, itemTypeSnapshot: menuItems.riceBowl.itemType, priceSnapshot: menuItems.riceBowl.price, quantity: 1, lineTotal: menuItems.riceBowl.price, calories: menuItems.riceBowl.calories, carbsGrams: menuItems.riceBowl.carbsGrams, proteinGrams: menuItems.riceBowl.proteinGrams, fatGrams: menuItems.riceBowl.fatGrams, vitaminsGrams: menuItems.riceBowl.vitaminsGrams, customizationNotes: 'Small portion' }
+        ]
+      }
+    }
+  });
+  await prisma.foodOrderStatusHistory.create({ data: { foodOrderId: demoFoodOrder.id, status: 'PLACED', changedById: users.patientUser.id, note: 'Seed Cure Cafe menu order' } });
+  await prisma.billingCharge.create({ data: { patientId: patients.priya.id, foodOrderId: demoFoodOrder.id, description: `Cure Cafe order ${demoFoodOrder.orderNumber}`, amount: demoFoodOrder.totalAmount, status: 'PENDING', chargeDate: today } });
 
   await prisma.inventoryTxn.createMany({
     data: [

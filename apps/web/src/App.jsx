@@ -9,6 +9,8 @@ import UsersPage from './pages/UsersPage';
 import PatientsPage from './pages/PatientsPage';
 import DietsPage from './pages/DietsPage';
 import MealsPage from './pages/MealsPage';
+import MenuPage from './pages/MenuPage';
+import OrdersPage from './pages/OrdersPage';
 import KitchenPage from './pages/KitchenPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import InventoryPage from './pages/InventoryPage';
@@ -32,6 +34,8 @@ export default function App() {
             <Route path="patients" element={<PatientsPage />} />
             <Route path="diets" element={<DietsPage />} />
             <Route path="meals" element={<MealsPage />} />
+            <Route path="menu" element={<MenuPage />} />
+            <Route path="orders" element={<OrdersPage />} />
             <Route path="kitchen" element={<KitchenPage />} />
             <Route path="deliveries" element={<DeliveriesPage />} />
             <Route path="inventory" element={<InventoryPage />} />
