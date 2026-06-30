@@ -1,0 +1,286 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String             @id @default(cuid())
+  name               String
+  email              String             @unique
+  phone              String?
+  passwordHash       String
+  role               String
+  isActive           Boolean            @default(true)
+  refreshTokenHash   String?
+  patientProfile     Patient?           @relation("PatientUser")
+  doctorPrescriptions DietPrescription[] @relation("DoctorPrescriptions")
+  dieticianApprovals DietPrescription[] @relation("DieticianApprovals")
+  deliveryOrders     MealOrder[]        @relation("DeliveryStaffOrders")
+  notifications      Notification[]     @relation("UserNotifications")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model Patient {
+  id                String             @id @default(cuid())
+  userId            String?            @unique
+  user              User?              @relation("PatientUser", fields: [userId], references: [id], onDelete: SetNull)
+  mrn               String             @unique
+  name              String
+  age               Int?
+  gender            String?
+  phone             String?
+  roomNumber        String
+  ward              String
+  bedNumber         String
+  admissionDate     DateTime
+  dischargeDate     DateTime?
+  status            String             @default("ADMITTED")
+  preferences       String             @default("[]")
+  restrictions      String             @default("[]")
+  allergies         String             @default("[]")
+  notes             String?
+  currentDietPlanId String?
+  currentDietPlan   DietPlan?          @relation("CurrentPatientDiet", fields: [currentDietPlanId], references: [id], onDelete: SetNull)
+  dietPlans         DietPlan[]         @relation("PatientDietPlans")
+  prescriptions     DietPrescription[]
+  mealOrders        MealOrder[]
+  billingCharges    BillingCharge[]
+  feedbacks         Feedback[]
+  fileAssets        FileAsset[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([ward, status])
+  @@index([status])
+}
+
+model DietPlan {
+  id                 String             @id @default(cuid())
+  patientId          String
+  patient            Patient            @relation("PatientDietPlans", fields: [patientId], references: [id], onDelete: Cascade)
+  currentForPatients Patient[]           @relation("CurrentPatientDiet")
+  dietType           String
+  restrictions       String             @default("[]")
+  allergies          String             @default("[]")
+  calories           Int?
+  proteinGrams       Int?
+  carbsGrams         Int?
+  fatGrams           Int?
+  notes              String?
+  status             String             @default("APPROVED")
+  approvedById       String?
+  startDate          DateTime           @default(now())
+  endDate            DateTime?
+  prescriptions      DietPrescription[]
+  mealOrders         MealOrder[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([patientId, status])
+  @@index([dietType])
+}
+
+model DietPrescription {
+  id           String    @id @default(cuid())
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId     String
+  doctor       User      @relation("DoctorPrescriptions", fields: [doctorId], references: [id], onDelete: Restrict)
+  dieticianId  String?
+  dietician    User?     @relation("DieticianApprovals", fields: [dieticianId], references: [id], onDelete: SetNull)
+  dietPlanId   String?
+  dietPlan     DietPlan? @relation(fields: [dietPlanId], references: [id], onDelete: SetNull)
+  dietType     String
+  restrictions String    @default("[]")
+  allergies    String    @default("[]")
+  instructions String?
+  status       String    @default("PENDING")
+  prescribedAt DateTime  @default(now())
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([patientId, status])
+  @@index([doctorId])
+  @@index([dieticianId])
+}
+
+model MealSchedule {
+  id                     String   @id @default(cuid())
+  mealType               String   @unique
+  displayName            String
+  serveTime              String
+  preparationLeadMinutes Int      @default(120)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model MealOrder {
+  id                  String              @id @default(cuid())
+  patientId           String
+  patient             Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dietPlanId          String?
+  dietPlan            DietPlan?           @relation(fields: [dietPlanId], references: [id], onDelete: SetNull)
+  mealType            String
+  serviceDate         DateTime
+  ward                String
+  roomNumber          String
+  bedNumber           String
+  status              String              @default("SCHEDULED")
+  plannedFor          DateTime
+  preparedAt          DateTime?
+  packedAt            DateTime?
+  dispatchedAt        DateTime?
+  deliveredAt         DateTime?
+  deliveredById       String?
+  deliveredBy         User?               @relation("DeliveryStaffOrders", fields: [deliveredById], references: [id], onDelete: SetNull)
+  specialInstructions String?
+  cost                Float               @default(0)
+  statusHistory       MealStatusHistory[]
+  billingCharge       BillingCharge?
+  feedback            Feedback?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([patientId, mealType, serviceDate])
+  @@index([serviceDate, mealType, status])
+  @@index([ward])
+}
+
+model MealStatusHistory {
+  id          String    @id @default(cuid())
+  mealOrderId String
+  mealOrder   MealOrder @relation(fields: [mealOrderId], references: [id], onDelete: Cascade)
+  status      String
+  changedById String?
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@index([mealOrderId])
+}
+
+model InventoryItem {
+  id                String         @id @default(cuid())
+  name              String         @unique
+  unit              String
+  currentStock      Float          @default(0)
+  lowStockThreshold Float          @default(0)
+  expiryDate        DateTime?
+  batchNumber       String?
+  costPerUnit       Float          @default(0)
+  isActive          Boolean        @default(true)
+  transactions      InventoryTxn[]
+  wastageRecords    FoodWastage[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([isActive])
+  @@index([expiryDate])
+}
+
+model InventoryTxn {
+  id          String        @id @default(cuid())
+  itemId      String
+  item        InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type        String
+  quantity    Float
+  reason      String?
+  mealOrderId String?
+  createdById String?
+  createdAt   DateTime      @default(now())
+
+  @@index([itemId, createdAt])
+  @@index([type, createdAt])
+}
+
+model BillingCharge {
+  id          String     @id @default(cuid())
+  patientId   String
+  patient     Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  mealOrderId String?    @unique
+  mealOrder   MealOrder? @relation(fields: [mealOrderId], references: [id], onDelete: SetNull)
+  description String
+  amount      Float
+  status      String     @default("PENDING")
+  chargeDate  DateTime   @default(now())
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([patientId, status])
+  @@index([chargeDate])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  roleTarget String?
+  title      String
+  message    String
+  type       String   @default("GENERAL")
+  channel    String   @default("IN_APP")
+  readAt     DateTime?
+  metadata   String   @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([roleTarget, readAt])
+  @@index([type])
+}
+
+model Feedback {
+  id          String     @id @default(cuid())
+  patientId   String
+  patient     Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  mealOrderId String?    @unique
+  mealOrder   MealOrder? @relation(fields: [mealOrderId], references: [id], onDelete: SetNull)
+  taste       Int
+  quality     Int
+  quantity    Int
+  timing      Int
+  comments    String?
+  createdAt   DateTime   @default(now())
+
+  @@index([patientId, createdAt])
+}
+
+model FoodWastage {
+  id           String         @id @default(cuid())
+  itemId       String?
+  item         InventoryItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  mealType     String?
+  quantity     Float
+  unit         String
+  reason       String?
+  costEstimate Float          @default(0)
+  date         DateTime       @default(now())
+  createdById  String?
+  createdAt    DateTime       @default(now())
+
+  @@index([date])
+  @@index([mealType])
+}
+
+model FileAsset {
+  id           String   @id @default(cuid())
+  patientId    String?
+  patient      Patient? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  kind         String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  storagePath  String
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([patientId, kind])
+}

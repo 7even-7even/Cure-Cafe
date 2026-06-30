@@ -1,0 +1,351 @@
+const express = require('express');
+const { z } = require('zod');
+const { prisma } = require('../../config/prisma');
+const { requireAuth, authorize } = require('../../middleware/auth');
+const { validate } = require('../../middleware/validate');
+const { asyncHandler } = require('../../utils/asyncHandler');
+const { ApiError } = require('../../utils/apiError');
+const { startOfDay, endOfDay, parseDateOrToday, combineDateAndTime } = require('../../utils/date');
+const { safeJsonParse } = require('../../utils/json');
+const { ROLES, MEAL_TYPES, MEAL_STATUSES, DIET_COST } = require('../../constants');
+const { notifyRole, notifyUser } = require('../../services/notification.service');
+
+const router = express.Router();
+router.use(requireAuth);
+
+const MEAL_COST_FACTOR = {
+  BREAKFAST: 0.25,
+  LUNCH: 0.35,
+  EVENING_SNACKS: 0.15,
+  DINNER: 0.35
+};
+
+async function ownPatientId(userId) {
+  const profile = await prisma.patient.findUnique({ where: { userId }, select: { id: true } });
+  return profile?.id || '__none__';
+}
+
+function orderInclude() {
+  return {
+    patient: { include: { user: { select: { id: true } } } },
+    dietPlan: true,
+    deliveredBy: { select: { id: true, name: true, email: true } },
+    statusHistory: { orderBy: { createdAt: 'desc' }, take: 10 }
+  };
+}
+
+router.get('/schedules', asyncHandler(async (_req, res) => {
+  const schedules = await prisma.mealSchedule.findMany({ orderBy: { serveTime: 'asc' } });
+  res.json({ success: true, data: { items: schedules } });
+}));
+
+const updateScheduleSchema = z.object({
+  params: z.object({ id: z.string().min(1) }),
+  body: z.object({
+    displayName: z.string().min(2).optional(),
+    serveTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+    preparationLeadMinutes: z.number().int().positive().max(1440).optional(),
+    isActive: z.boolean().optional()
+  }).refine((value) => Object.keys(value).length > 0, 'At least one field is required')
+});
+
+router.put('/schedules/:id', authorize(ROLES.ADMIN, ROLES.KITCHEN_STAFF), validate(updateScheduleSchema), asyncHandler(async (req, res) => {
+  const schedule = await prisma.mealSchedule.update({ where: { id: req.validated.params.id }, data: req.validated.body });
+  res.json({ success: true, data: { schedule } });
+}));
+
+const generateSchema = z.object({
+  body: z.object({
+    date: z.coerce.date().optional(),
+    mealTypes: z.array(z.enum(MEAL_TYPES)).optional()
+  }).default({})
+});
+
+router.post('/orders/generate', authorize(ROLES.ADMIN, ROLES.DIETICIAN, ROLES.KITCHEN_STAFF), validate(generateSchema), asyncHandler(async (req, res) => {
+  const serviceDate = startOfDay(req.validated.body.date || new Date());
+  const requestedTypes = req.validated.body.mealTypes;
+  const schedules = await prisma.mealSchedule.findMany({
+    where: { isActive: true, ...(requestedTypes?.length ? { mealType: { in: requestedTypes } } : {}) }
+  });
+  const patients = await prisma.patient.findMany({
+    where: { status: 'ADMITTED' },
+    include: { currentDietPlan: true }
+  });
+
+  let created = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (const patient of patients) {
+    const plan = patient.currentDietPlan;
+    const dietType = plan?.dietType || 'NORMAL';
+    const restrictions = safeJsonParse(plan?.restrictions, safeJsonParse(patient.restrictions, []));
+    const allergies = safeJsonParse(plan?.allergies, safeJsonParse(patient.allergies, []));
+    const prefs = safeJsonParse(patient.preferences, []);
+    for (const schedule of schedules) {
+      const plannedFor = combineDateAndTime(serviceDate, schedule.serveTime);
+      const cost = Math.round((DIET_COST[dietType] || DIET_COST.NORMAL) * (MEAL_COST_FACTOR[schedule.mealType] || 0.25));
+      const existingOrder = await prisma.mealOrder.findUnique({
+        where: {
+          patientId_mealType_serviceDate: {
+            patientId: patient.id,
+            mealType: schedule.mealType,
+            serviceDate
+          }
+        },
+        select: { id: true }
+      });
+      if (existingOrder) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        const order = await prisma.mealOrder.create({
+          data: {
+            patientId: patient.id,
+            dietPlanId: plan?.id,
+            mealType: schedule.mealType,
+            serviceDate,
+            ward: patient.ward,
+            roomNumber: patient.roomNumber,
+            bedNumber: patient.bedNumber,
+            plannedFor,
+            specialInstructions: [
+              restrictions.length ? `Restrictions: ${restrictions.join(', ')}` : '',
+              allergies.length ? `Allergies: ${allergies.join(', ')}` : '',
+              prefs.length ? `Preferences: ${prefs.join(', ')}` : ''
+            ].filter(Boolean).join(' | ') || null,
+            cost
+          }
+        });
+        await prisma.mealStatusHistory.create({ data: { mealOrderId: order.id, status: 'SCHEDULED', changedById: req.user.id, note: 'Generated by scheduler' } });
+        created += 1;
+      } catch (error) {
+        if (error.code === 'P2002') skipped += 1;
+        else errors.push({ patientId: patient.id, mealType: schedule.mealType, error: error.message });
+      }
+    }
+  }
+
+  await notifyRole(ROLES.KITCHEN_STAFF, {
+    title: 'Meal orders generated',
+    message: `${created} meal orders generated for ${serviceDate.toISOString().slice(0, 10)}. ${skipped} duplicates skipped.`,
+    type: 'GENERAL',
+    metadata: { date: serviceDate.toISOString(), created, skipped }
+  });
+
+  res.status(201).json({ success: true, data: { created, skipped, errors } });
+}));
+
+const listOrdersSchema = z.object({
+  query: z.object({
+    date: z.string().optional(),
+    status: z.enum(MEAL_STATUSES).optional(),
+    ward: z.string().optional(),
+    mealType: z.enum(MEAL_TYPES).optional(),
+    patientId: z.string().optional(),
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(200).default(100)
+  })
+});
+
+router.get('/orders', validate(listOrdersSchema), asyncHandler(async (req, res) => {
+  const { date, status, ward, mealType, patientId, page, limit } = req.validated.query;
+  const day = date ? parseDateOrToday(date) : null;
+  let where = {
+    ...(day ? { serviceDate: { gte: startOfDay(day), lte: endOfDay(day) } } : {}),
+    ...(status ? { status } : {}),
+    ...(ward ? { ward } : {}),
+    ...(mealType ? { mealType } : {}),
+    ...(patientId ? { patientId } : {})
+  };
+  if (req.user.role === ROLES.PATIENT) {
+    where = { ...where, patientId: await ownPatientId(req.user.id) };
+  }
+
+  const [items, total] = await Promise.all([
+    prisma.mealOrder.findMany({
+      where,
+      include: orderInclude(),
+      orderBy: [{ plannedFor: 'asc' }, { ward: 'asc' }],
+      skip: (page - 1) * limit,
+      take: limit
+    }),
+    prisma.mealOrder.count({ where })
+  ]);
+  res.json({ success: true, data: { items, total, page, limit } });
+}));
+
+router.get('/orders/:id', asyncHandler(async (req, res) => {
+  const order = await prisma.mealOrder.findUnique({ where: { id: req.params.id }, include: orderInclude() });
+  if (!order) throw new ApiError(404, 'Meal order not found');
+  if (req.user.role === ROLES.PATIENT && order.patientId !== await ownPatientId(req.user.id)) throw new ApiError(403, 'Forbidden');
+  res.json({ success: true, data: { order } });
+}));
+
+const updateStatusSchema = z.object({
+  params: z.object({ id: z.string().min(1) }),
+  body: z.object({
+    status: z.enum(MEAL_STATUSES),
+    note: z.string().optional(),
+    deliveredById: z.string().optional()
+  })
+});
+
+function assertTransitionAllowed(user, currentStatus, nextStatus) {
+  if (user.role === ROLES.ADMIN) return;
+  if (nextStatus === 'CANCELLED' && [ROLES.KITCHEN_STAFF, ROLES.DIETICIAN].includes(user.role)) return;
+
+  const allowed = {
+    SCHEDULED: { PREPARED: [ROLES.KITCHEN_STAFF] },
+    PREPARED: { PACKED: [ROLES.KITCHEN_STAFF] },
+    PACKED: { DISPATCHED: [ROLES.DELIVERY_STAFF] },
+    DISPATCHED: { DELIVERED: [ROLES.DELIVERY_STAFF] }
+  };
+
+  const roles = allowed[currentStatus]?.[nextStatus];
+  if (!roles || !roles.includes(user.role)) {
+    throw new ApiError(403, `Role ${user.role} cannot change meal from ${currentStatus} to ${nextStatus}`);
+  }
+}
+
+router.patch('/orders/:id/status', validate(updateStatusSchema), asyncHandler(async (req, res) => {
+  const { id } = req.validated.params;
+  const { status, note, deliveredById } = req.validated.body;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.mealOrder.findUnique({ where: { id }, include: { patient: { include: { user: true } }, dietPlan: true, billingCharge: true } });
+    if (!existing) throw new ApiError(404, 'Meal order not found');
+    if (existing.status === 'DELIVERED' && status !== 'DELIVERED') throw new ApiError(409, 'Delivered meals cannot be changed');
+    if (existing.status === status) return existing;
+    assertTransitionAllowed(req.user, existing.status, status);
+
+    const data = { status };
+    if (status === 'PREPARED') data.preparedAt = new Date();
+    if (status === 'PACKED') data.packedAt = new Date();
+    if (status === 'DISPATCHED') {
+      data.dispatchedAt = new Date();
+      data.deliveredById = req.user.role === ROLES.DELIVERY_STAFF ? req.user.id : deliveredById || existing.deliveredById;
+    }
+    if (status === 'DELIVERED') {
+      data.deliveredAt = new Date();
+      data.deliveredById = req.user.role === ROLES.DELIVERY_STAFF ? req.user.id : deliveredById || existing.deliveredById;
+    }
+
+    const updated = await tx.mealOrder.update({ where: { id }, data, include: orderInclude() });
+    await tx.mealStatusHistory.create({ data: { mealOrderId: id, status, changedById: req.user.id, note } });
+
+    if (status === 'DELIVERED' && !existing.billingCharge) {
+      await tx.billingCharge.create({
+        data: {
+          patientId: existing.patientId,
+          mealOrderId: id,
+          description: `${existing.mealType.replace('_', ' ')} - ${existing.dietPlan?.dietType || 'NORMAL'} diet`,
+          amount: existing.cost,
+          status: 'POSTED'
+        }
+      });
+    }
+
+    return updated;
+  });
+
+  if (status === 'PACKED') {
+    await notifyRole(ROLES.DELIVERY_STAFF, {
+      title: 'Packed meals ready for dispatch',
+      message: `${result.mealType} for ${result.patient.name}, ${result.ward}/${result.roomNumber}-${result.bedNumber} is packed.`,
+      type: 'PENDING_DELIVERY',
+      metadata: { mealOrderId: result.id }
+    });
+  }
+  if (status === 'DELIVERED' && result.patient?.userId) {
+    await notifyUser(result.patient.userId, {
+      title: 'Meal delivered',
+      message: `Your ${result.mealType.toLowerCase().replace('_', ' ')} has been delivered.`,
+      type: 'GENERAL',
+      metadata: { mealOrderId: result.id }
+    });
+  }
+
+  res.json({ success: true, data: { order: result } });
+}));
+
+router.delete('/orders/:id', authorize(ROLES.ADMIN, ROLES.KITCHEN_STAFF), asyncHandler(async (req, res) => {
+  const existing = await prisma.mealOrder.findUnique({ where: { id: req.params.id } });
+  if (!existing) throw new ApiError(404, 'Meal order not found');
+  if (existing.status === 'DELIVERED') throw new ApiError(409, 'Delivered meals cannot be cancelled');
+  const order = await prisma.mealOrder.update({ where: { id: req.params.id }, data: { status: 'CANCELLED' } });
+  await prisma.mealStatusHistory.create({ data: { mealOrderId: order.id, status: 'CANCELLED', changedById: req.user.id, note: 'Cancelled' } });
+  res.json({ success: true, data: { order } });
+}));
+
+const dashboardSchema = z.object({
+  query: z.object({
+    date: z.string().optional(),
+    mealType: z.enum(MEAL_TYPES).optional()
+  })
+});
+
+router.get('/kitchen/dashboard', authorize(ROLES.ADMIN, ROLES.KITCHEN_STAFF, ROLES.DIETICIAN), validate(dashboardSchema), asyncHandler(async (req, res) => {
+  const date = parseDateOrToday(req.validated.query.date);
+  const where = {
+    serviceDate: { gte: startOfDay(date), lte: endOfDay(date) },
+    ...(req.validated.query.mealType ? { mealType: req.validated.query.mealType } : {}),
+    status: { not: 'CANCELLED' }
+  };
+  const orders = await prisma.mealOrder.findMany({ where, include: { patient: true, dietPlan: true }, orderBy: [{ mealType: 'asc' }, { ward: 'asc' }] });
+
+  const byDietMap = new Map();
+  const byWardMap = new Map();
+  const statusCounts = {};
+  const specialMeals = [];
+
+  for (const order of orders) {
+    const dietType = order.dietPlan?.dietType || 'NORMAL';
+    const diet = byDietMap.get(dietType) || { dietType, total: 0, wards: {} };
+    diet.total += 1;
+    diet.wards[order.ward] = (diet.wards[order.ward] || 0) + 1;
+    byDietMap.set(dietType, diet);
+
+    const ward = byWardMap.get(order.ward) || { ward: order.ward, total: 0, mealTypes: {} };
+    ward.total += 1;
+    ward.mealTypes[order.mealType] = (ward.mealTypes[order.mealType] || 0) + 1;
+    byWardMap.set(order.ward, ward);
+
+    statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+
+    if (order.specialInstructions) {
+      specialMeals.push({
+        orderId: order.id,
+        patientName: order.patient.name,
+        ward: order.ward,
+        roomNumber: order.roomNumber,
+        bedNumber: order.bedNumber,
+        mealType: order.mealType,
+        dietType,
+        specialInstructions: order.specialInstructions,
+        status: order.status
+      });
+    }
+  }
+
+  const byDiet = [...byDietMap.values()].map((item) => ({
+    dietType: item.dietType,
+    total: item.total,
+    wards: Object.entries(item.wards).map(([ward, count]) => ({ ward, count }))
+  }));
+
+  res.json({
+    success: true,
+    data: {
+      date: date.toISOString().slice(0, 10),
+      totalMeals: orders.length,
+      byDiet,
+      byWard: [...byWardMap.values()],
+      statusCounts,
+      specialMeals
+    }
+  });
+}));
+
+module.exports = router;

@@ -1,0 +1,99 @@
+const ROLES = Object.freeze({
+  ADMIN: 'ADMIN',
+  DOCTOR: 'DOCTOR',
+  DIETICIAN: 'DIETICIAN',
+  KITCHEN_STAFF: 'KITCHEN_STAFF',
+  DELIVERY_STAFF: 'DELIVERY_STAFF',
+  PATIENT: 'PATIENT'
+});
+
+const ROLE_VALUES = Object.freeze(Object.values(ROLES));
+
+const DIET_TYPES = Object.freeze([
+  'DIABETIC',
+  'LOW_SODIUM',
+  'LIQUID',
+  'HIGH_PROTEIN',
+  'NORMAL'
+]);
+
+const RESTRICTIONS = Object.freeze([
+  'GLUTEN_FREE',
+  'NUT_ALLERGY',
+  'LACTOSE_INTOLERANCE',
+  'VEGETARIAN',
+  'JAIN'
+]);
+
+const MEAL_TYPES = Object.freeze([
+  'BREAKFAST',
+  'LUNCH',
+  'EVENING_SNACKS',
+  'DINNER'
+]);
+
+const MEAL_STATUSES = Object.freeze([
+  'SCHEDULED',
+  'PREPARED',
+  'PACKED',
+  'DISPATCHED',
+  'DELIVERED',
+  'CANCELLED'
+]);
+
+const PRESCRIPTION_STATUSES = Object.freeze([
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+  'SUPERSEDED'
+]);
+
+const INVENTORY_TXN_TYPES = Object.freeze([
+  'PURCHASE',
+  'CONSUMPTION',
+  'ADJUSTMENT',
+  'WASTAGE'
+]);
+
+const BILLING_STATUSES = Object.freeze([
+  'PENDING',
+  'POSTED',
+  'PAID',
+  'WAIVED'
+]);
+
+const NOTIFICATION_TYPES = Object.freeze([
+  'DIET_CHANGED',
+  'LOW_STOCK',
+  'PENDING_DELIVERY',
+  'GENERAL'
+]);
+
+const NOTIFICATION_CHANNELS = Object.freeze([
+  'IN_APP',
+  'EMAIL',
+  'SMS'
+]);
+
+const DIET_COST = Object.freeze({
+  DIABETIC: 160,
+  LOW_SODIUM: 145,
+  LIQUID: 120,
+  HIGH_PROTEIN: 180,
+  NORMAL: 100
+});
+
+module.exports = {
+  ROLES,
+  ROLE_VALUES,
+  DIET_TYPES,
+  RESTRICTIONS,
+  MEAL_TYPES,
+  MEAL_STATUSES,
+  PRESCRIPTION_STATUSES,
+  INVENTORY_TXN_TYPES,
+  BILLING_STATUSES,
+  NOTIFICATION_TYPES,
+  NOTIFICATION_CHANNELS,
+  DIET_COST
+};

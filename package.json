@@ -1,21 +1,23 @@
 {
-  "name": "hfms-workspace",
+  "name": "hospital-food-management-system",
   "version": "1.0.0",
-  "description": "Hospital Food Management System (HFMS) - Production MVP Monorepo",
   "private": true,
+  "description": "Production-ready MVP for Hospital Food Management System (HFMS)",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
   "scripts": {
-    "install:backend": "cd backend && npm install",
-    "install:frontend": "cd frontend && npm install",
-    "install:all": "npm run install:backend && npm run install:frontend",
-    "build:backend": "cd backend && npm run build",
-    "build:frontend": "cd frontend && npm run build",
-    "build": "npm run build:backend && npm run build:frontend",
-    "seed": "cd backend && npm run seed",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\""
+    "setup": "npm install && npm run db:push -w apps/api && npm run db:seed -w apps/api",
+    "dev": "concurrently -n API,WEB -c blue,green \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "start": "npm run start -w apps/api",
+    "build": "npm run build -w apps/web",
+    "smoke:test": "npm run smoke:test -w apps/api"
   },
-  "dependencies": {
-    "concurrently": "^8.2.2"
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -1,7 +1,10 @@
-node_modules/
-dist/
+node_modules
 .env
-*.log
 .DS_Store
-.env.example
-README.md
+apps/api/dev.db
+apps/api/dev.db-journal
+apps/api/uploads
+apps/web/dist
+coverage
+*.log
+*.db
